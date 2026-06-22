@@ -1,4 +1,4 @@
-# Monoexponeial Modeling Application
+# Monoexponeial Modeling Applicatiion
 source("monoexp_model_HCRL.R")
 # Load packages
 packages <- c(
