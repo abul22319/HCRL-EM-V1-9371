@@ -4,7 +4,7 @@
 
 #Fit a mono exponential model to a time series
 
-#' @param data      Data frame containing a "Time" column and the variable column to be modeled.
+#' @param data      Data frame containing a "Time"
 #' @param variable   Name (string) of the column in `data` to fit.
 #' @param direction  1 = Rise 2 = Decay
 #' @param filter     Apply a Butterworth low-pass filter
