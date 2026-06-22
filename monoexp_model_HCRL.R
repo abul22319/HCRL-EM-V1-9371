@@ -2,11 +2,6 @@
 # NOTE: this side of the script is doing the modeling itself. 
 #If any lab members want changes to the calculations, they must be done here
 
-library(minpack.lm)
-library(ggplot2)
-library(signal)
-library(zoo)
-
 #Fit a mono exponential model to a time series
 
 #' @param data      Data frame containing a "Time" column and the variable column to be modeled.
