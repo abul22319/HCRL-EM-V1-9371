@@ -15,42 +15,51 @@ MonoExpModel <- function(data, variable, direction,
                          n_comp = 1,
                          filter = TRUE, cutoff = 0.3, order = 2){
 
-  # cleaning 
+  n_comp    <- as.numeric(n_comp)
+  direction <- as.numeric(direction)
+
   data <- data[!is.na(data$Time), ]
   data$raw <- data[[variable]]
   data$.y  <- data[[variable]]
+
 
   neg_count <- sum(data$.y < 0, na.rm = TRUE)
   if(neg_count > 0){
     message(paste("Removed", neg_count, "negative values in", variable))
     data$.y[data$.y < 0] <- NA
   }
+
+
   if(any(is.na(data$.y))){
     data$.y <- zoo::na.approx(data$.y, x = data$Time, na.rm = FALSE)
   }
+
   if(any(is.na(data$.y))){
     data$.y <- zoo::na.locf(data$.y, na.rm = FALSE)
     data$.y <- zoo::na.locf(data$.y, fromLast = TRUE)
   }
+
+
   if(filter){
     bw <- signal::butter(order, cutoff, type = "low")
     data$.y <- signal::filtfilt(bw, data$.y)
   }
 
-
-n_comp <- as.numeric(n_comp)
-
+  # These are just first guesses to launch the optimizer. They are computed
+  # from the shape of the data so both rises and decays start sensibly.
   Tmax <- max(data$Time, na.rm = TRUE)
 
-
+  # Average the first/last chunk of points to estimate where the signal starts
+  # (baseline) and ends (plateau). `amp` is SIGNED: positive for a rise,
+  # negative for a decay. This is what makes decay fits converge normally.
   n_pts    <- length(data$.y)
-  k        <- max(3, floor(0.10 * n_pts))          # points averaged at each end
-  baseline <- mean(head(data$.y, k), na.rm = TRUE) # starting level
-  plateau  <- mean(tail(data$.y, k), na.rm = TRUE) # ending level
-  amp      <- plateau - baseline                   # SIGNED total amplitude
+  k        <- max(3, floor(0.10 * n_pts))
+  baseline <- mean(head(data$.y, k), na.rm = TRUE)
+  plateau  <- mean(tail(data$.y, k), na.rm = TRUE)
+  amp      <- plateau - baseline
   if(!is.finite(amp) || amp == 0) amp <- diff(range(data$.y, na.rm = TRUE))
 
-
+  # Time delay guess: first time the signal has moved 5% toward its plateau.
   thr     <- baseline + 0.05 * amp
   crossed <- if(amp >= 0) which(data$.y > thr) else which(data$.y < thr)
   TD_base <- if(length(crossed) > 0) data$Time[min(crossed)] else 0.05 * Tmax
@@ -58,8 +67,9 @@ n_comp <- as.numeric(n_comp)
   tau_span <- Tmax - TD_base
   if(!is.finite(tau_span) || tau_span <= 0) tau_span <- Tmax
 
-
-
+  # One B / tau / TD per component. tau and TD are staggered across components
+  # so a multi-phase response splits into distinct phases instead of collapsing
+  # into identical overlapping curves.
   Start_vals <- list()
   for(i in seq_len(n_comp)){
     Start_vals[[paste0("B",   i)]] <- amp / n_comp
@@ -67,14 +77,17 @@ n_comp <- as.numeric(n_comp)
     Start_vals[[paste0("TD",  i)]] <- TD_base + (i - 1) * tau_span / n_comp
   }
 
+
   terms <- vapply(seq_len(n_comp), function(i){
     sprintf("B%d * (1 - exp(-pmax(Time - TD%d, 0)/tau%d))", i, i, i)
   }, character(1))
   model_formula <- as.formula(paste(".y ~", paste(terms, collapse = " + ")))
 
-
-  lower_vec <- setNames(numeric(length(Start_vals)),      names(Start_vals))
-  upper_vec <- setNames(rep(Inf, length(Start_vals)),     names(Start_vals))
+  # tau must be positive; TD is kept within the recorded time window.
+  # B is forced non-negative for a rise, but left free for a decay so the
+  # amplitude can go negative.
+  lower_vec <- setNames(numeric(length(Start_vals)),  names(Start_vals))
+  upper_vec <- setNames(rep(Inf, length(Start_vals)), names(Start_vals))
   for(i in seq_len(n_comp)){
     lower_vec[[paste0("tau", i)]] <- 1e-6
     lower_vec[[paste0("TD",  i)]] <- 0
@@ -82,40 +95,63 @@ n_comp <- as.numeric(n_comp)
     lower_vec[[paste0("B",   i)]] <- if(direction == 1) 0 else -Inf
   }
 
-  fit <- tryCatch({
-    minpack.lm::nlsLM(
-      model_formula, data = data, start = Start_vals,
-      lower = lower_vec, upper = upper_vec,
-      control = minpack.lm::nls.lm.control(maxiter = 300)
+
+
+  fit_once <- function(start){
+    tryCatch(
+      minpack.lm::nlsLM(
+        model_formula, data = data, start = start,
+        lower = lower_vec, upper = upper_vec,
+        control = minpack.lm::nls.lm.control(maxiter = 300)
+      ),
+      error = function(e) e
     )
-  }, error = function(e){
-    message("Model failed: ", e$message)
-    NULL
-  })
+  }
+
+  fit      <- fit_once(Start_vals)
+  attempts <- 0
+  last_msg <- NULL
+
+  while(inherits(fit, "error") && attempts < 20){
+    last_msg <- conditionMessage(fit)
+    attempts <- attempts + 1
+    jittered <- lapply(Start_vals, function(v) v * (1 + rnorm(1, 0, 0.15)))
+    # keep jittered starts inside the declared bounds
+    for(nm in names(jittered)){
+      jittered[[nm]] <- min(max(jittered[[nm]], lower_vec[[nm]]), upper_vec[[nm]])
+    }
+    fit <- fit_once(jittered)
+  }
+
+  if(inherits(fit, "error")){
+    last_msg <- conditionMessage(fit)
+    fit <- NULL
+  }
 
 
-  
-
-if(is.null(fit)){
+  if(is.null(fit)){
+    msg <- paste("Fit failed:",
+                 if(is.null(last_msg)) "no convergence" else last_msg)
     return(list(
-      Parameters    = NA,
-      Exp.Model     = ggplot() + ggtitle("Fit failed"),
-      RefLine.Model = ggplot() + ggtitle("Fit failed"),
+      Parameters    = data.frame(Note = msg),
+      Exp.Model     = ggplot() + ggtitle(msg) + theme_void(),
+      RefLine.Model = ggplot() + ggtitle("Model did not converge") + theme_void(),
       Cor.Result    = NA
     ))
   }
 
-  # Predictions / R2 / correlation
+
   data$Fit  <- predict(fit)
   valid     <- !is.na(data$raw) & !is.na(data$Fit)
   residuals <- data$raw[valid] - data$Fit[valid]
+
   SSres <- sum(residuals^2)
   SStot <- sum((data$raw[valid] - mean(data$raw[valid]))^2)
   R2    <- if(SStot == 0) NA else 1 - SSres / SStot
 
   cor_test <- cor.test(residuals, data$raw[valid], method = "spearman")
 
-  # Plots
+
   model_plot <- ggplot(data, aes(x = Time)) +
     geom_point(aes(y = raw), color = "blue") +
     geom_line(aes(y = Fit), color = "red", linewidth = 1) +
@@ -128,7 +164,7 @@ if(is.null(fit)){
     labs(y = "Residual") + theme_classic() +
     ggtitle(paste(variable, "Residuals"))
 
-  # Parameter table adapts to n_comp
+
   cf     <- coef(fit)
   params <- data.frame(Variable = variable, Components = n_comp)
   for(i in seq_len(n_comp)){
