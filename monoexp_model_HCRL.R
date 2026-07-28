@@ -82,11 +82,58 @@ MonoExpModel <- function(data, variable, direction,
     NULL
   })
 
-  if(is.null(fit)){
+if(is.null(fit)){
     return(list(
       Parameters    = NA,
       Exp.Model     = ggplot() + ggtitle("Fit failed"),
       RefLine.Model = ggplot() + ggtitle("Fit failed"),
       Cor.Result    = NA
-      )
-    }
+    ))
+  }
+
+  # Predictions / R2 / correlation
+  data$Fit  <- predict(fit)
+  valid     <- !is.na(data$raw) & !is.na(data$Fit)
+  residuals <- data$raw[valid] - data$Fit[valid]
+  SSres <- sum(residuals^2)
+  SStot <- sum((data$raw[valid] - mean(data$raw[valid]))^2)
+  R2    <- if(SStot == 0) NA else 1 - SSres / SStot
+
+  cor_test <- cor.test(residuals, data$raw[valid], method = "spearman")
+
+  # Plots
+  model_plot <- ggplot(data, aes(x = Time)) +
+    geom_point(aes(y = raw), color = "blue") +
+    geom_line(aes(y = Fit), color = "red", linewidth = 1) +
+    labs(y = variable) + theme_classic() +
+    ggtitle(paste(variable, "Model Fit —", n_comp, "component(s)"))
+
+  residual_plot <- ggplot(data[valid, ], aes(x = Time)) +
+    geom_point(aes(y = residuals), color = "darkorange") +
+    geom_hline(yintercept = mean(residuals), linetype = "dashed") +
+    labs(y = "Residual") + theme_classic() +
+    ggtitle(paste(variable, "Residuals"))
+
+  # Parameter table adapts to n_comp
+  cf     <- coef(fit)
+  params <- data.frame(Variable = variable, Components = n_comp)
+  for(i in seq_len(n_comp)){
+    params[[paste0("B",   i)]] <- cf[[paste0("B",   i)]]
+    params[[paste0("Tau", i)]] <- cf[[paste0("tau", i)]]
+    params[[paste0("TD",  i)]] <- cf[[paste0("TD",  i)]]
+    params[[paste0("MRT", i)]] <- cf[[paste0("tau", i)]] + cf[[paste0("TD", i)]]
+  }
+
+  cor_results <- data.frame(
+    R2  = R2,
+    P   = cor_test$p.value,
+    Rho = cor_test$estimate
+  )
+
+  list(
+    Parameters    = params,
+    Exp.Model     = model_plot,
+    RefLine.Model = residual_plot,
+    Cor.Result    = cor_results
+  )
+}
