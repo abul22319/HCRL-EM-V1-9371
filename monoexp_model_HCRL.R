@@ -37,24 +37,34 @@ MonoExpModel <- function(data, variable, direction,
     data$.y <- signal::filtfilt(bw, data$.y)
   }
 
-  n_comp <- as.numeric(n_comp)
 
-  Tmax  <- max(data$Time, na.rm = TRUE)
-  B_tot <- max(data$.y,   na.rm = TRUE)
+n_comp <- as.numeric(n_comp)
 
-  threshold <- 0.05 * B_tot
-  above     <- data$Time[data$.y > threshold]
-  TD_base   <- if(length(above) > 0) min(above, na.rm = TRUE) else 0.05 * Tmax
+  Tmax <- max(data$Time, na.rm = TRUE)
+
+
+  n_pts    <- length(data$.y)
+  k        <- max(3, floor(0.10 * n_pts))          # points averaged at each end
+  baseline <- mean(head(data$.y, k), na.rm = TRUE) # starting level
+  plateau  <- mean(tail(data$.y, k), na.rm = TRUE) # ending level
+  amp      <- plateau - baseline                   # SIGNED total amplitude
+  if(!is.finite(amp) || amp == 0) amp <- diff(range(data$.y, na.rm = TRUE))
+
+
+  thr     <- baseline + 0.05 * amp
+  crossed <- if(amp >= 0) which(data$.y > thr) else which(data$.y < thr)
+  TD_base <- if(length(crossed) > 0) data$Time[min(crossed)] else 0.05 * Tmax
 
   tau_span <- Tmax - TD_base
   if(!is.finite(tau_span) || tau_span <= 0) tau_span <- Tmax
 
-  # one B/tau/TD per component
+
+
   Start_vals <- list()
   for(i in seq_len(n_comp)){
-    Start_vals[[paste0("B",   i)]] <- B_tot / n_comp
+    Start_vals[[paste0("B",   i)]] <- amp / n_comp
     Start_vals[[paste0("tau", i)]] <- 0.2 * tau_span * i / n_comp
-    Start_vals[[paste0("TD",  i)]] <- TD_base
+    Start_vals[[paste0("TD",  i)]] <- TD_base + (i - 1) * tau_span / n_comp
   }
 
   terms <- vapply(seq_len(n_comp), function(i){
@@ -62,25 +72,29 @@ MonoExpModel <- function(data, variable, direction,
   }, character(1))
   model_formula <- as.formula(paste(".y ~", paste(terms, collapse = " + ")))
 
-  # Fit
+
+  lower_vec <- setNames(numeric(length(Start_vals)),      names(Start_vals))
+  upper_vec <- setNames(rep(Inf, length(Start_vals)),     names(Start_vals))
+  for(i in seq_len(n_comp)){
+    lower_vec[[paste0("tau", i)]] <- 1e-6
+    lower_vec[[paste0("TD",  i)]] <- 0
+    upper_vec[[paste0("TD",  i)]] <- Tmax
+    lower_vec[[paste0("B",   i)]] <- if(direction == 1) 0 else -Inf
+  }
+
   fit <- tryCatch({
-    if(direction == 1){
-      lower_vec <- setNames(rep(0, length(Start_vals)), names(Start_vals))
-      minpack.lm::nlsLM(
-        model_formula, data = data, start = Start_vals,
-        lower = lower_vec,
-        control = minpack.lm::nls.lm.control(maxiter = 300)
-      )
-    } else {
-      minpack.lm::nlsLM(
-        model_formula, data = data, start = Start_vals,
-        control = minpack.lm::nls.lm.control(maxiter = 300)
-      )
-    }
+    minpack.lm::nlsLM(
+      model_formula, data = data, start = Start_vals,
+      lower = lower_vec, upper = upper_vec,
+      control = minpack.lm::nls.lm.control(maxiter = 300)
+    )
   }, error = function(e){
     message("Model failed: ", e$message)
     NULL
   })
+
+
+  
 
 if(is.null(fit)){
     return(list(
