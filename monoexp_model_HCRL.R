@@ -88,3 +88,5 @@ MonoExpModel <- function(data, variable, direction,
       Exp.Model     = ggplot() + ggtitle("Fit failed"),
       RefLine.Model = ggplot() + ggtitle("Fit failed"),
       Cor.Result    = NA
+      )
+    }
