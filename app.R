@@ -49,7 +49,7 @@ ui <- page_sidebar(
     radioButtons(
       "model_type",
       "Number of Components:",
-      choices = c("1 (Mono)" = 1, "2 (Bi)" = 2, "3 (Tri)" = 3),
+      choices = c("1" = 1, "2" = 2, "3" = 3),
       selected = 1,
       inline = TRUE
     ),
