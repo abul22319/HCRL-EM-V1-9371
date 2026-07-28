@@ -45,6 +45,14 @@ ui <- page_sidebar(
       choices = c("Rise" = 1, "Decay" = 2),
       inline = TRUE
     ),
+
+    radioButtons(
+      "model_type",
+      "Number of Components:",
+      choices = c("1 (Mono)" = 1, "2 (Bi)" = 2, "3 (Tri)" = 3),
+      selected = 1,
+      inline = TRUE
+    ),
     
     tags$hr(),
     
@@ -152,6 +160,7 @@ data_reactive <- reactive({
     req(data_reactive(), input$bf_col)
     MonoExpModel(
       data_reactive(), input$bf_col, as.numeric(input$direction),
+      n_comp = as.numeric(input$model_type),
       filter = input$apply_filter,
       cutoff = input$cutoff,
       order = as.numeric(input$order)
@@ -162,6 +171,7 @@ data_reactive <- reactive({
     req(data_reactive(), input$vc_col)
     MonoExpModel(
       data_reactive(), input$vc_col, as.numeric(input$direction),
+       n_comp = as.numeric(input$model_type),
       filter = input$apply_filter,
       cutoff = input$cutoff,
       order = as.numeric(input$order)
@@ -172,6 +182,7 @@ data_reactive <- reactive({
     req(data_reactive(), input$vo2_col)
     MonoExpModel(
       data_reactive(), input$vo2_col, as.numeric(input$direction),
+       n_comp = as.numeric(input$model_type),
       filter = input$apply_filter,
       cutoff = input$cutoff,
       order = as.numeric(input$order)
