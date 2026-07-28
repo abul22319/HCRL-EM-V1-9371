@@ -23,10 +23,14 @@ MonoExpModel <- function(data, variable, direction,
   data$.y  <- data[[variable]]
 
 
-  neg_count <- sum(data$.y < 0, na.rm = TRUE)
-  if(neg_count > 0){
-    message(paste("Removed", neg_count, "negative values in", variable))
-    data$.y[data$.y < 0] <- NA
+  # Only meaningful for a rise, where the signal should stay at/above baseline.
+  # A decay can legitimately fall below zero, so don't strip negatives there.
+  if(direction == 1){
+    neg_count <- sum(data$.y < 0, na.rm = TRUE)
+    if(neg_count > 0){
+      message(paste("Removed", neg_count, "negative values in", variable))
+      data$.y[data$.y < 0] <- NA
+    }
   }
 
 
