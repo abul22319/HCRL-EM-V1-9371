@@ -4,12 +4,12 @@
 
 #Fit a mono exponential model to a time series
 
-#' @param data      Data frame containing a "Time"
-#' @param variable   Name (string) of the column in `data` to fit.
+#' @param data      
+#' @param variable  
 #' @param direction  1 = Rise 2 = Decay
-#' @param filter     Apply a Butterworth low-pass filter
+#' @param filter     Butterworth low-pass filter
 #' @param cutoff     Normalized cutoff frequency 
-#' @param order      Order of the Butterworth filter (e.g. 2, 4, 6, 8).
+#' @param order      Order of the Butterworth filter 
 #' @return A list with Parameters, Exp.Model (fit plot), RefLine.Model (residual plot), and Cor.Result (R2 / Spearman correlation table).
 MonoExpModel <- function(data, variable, direction,
                          n_comp = 1,
@@ -23,15 +23,14 @@ MonoExpModel <- function(data, variable, direction,
   data$.y  <- data[[variable]]
 
 
-  # Only meaningful for a rise, where the signal should stay at/above baseline.
-  # A decay can legitimately fall below zero, so don't strip negatives there.
-  if(direction == 1){
-    neg_count <- sum(data$.y < 0, na.rm = TRUE)
-    if(neg_count > 0){
-      message(paste("Removed", neg_count, "negative values in", variable))
-      data$.y[data$.y < 0] <- NA
-    }
-  }
+ 
+#  if(direction == 1){
+#    neg_count <- sum(data$.y < 0, na.rm = TRUE)
+#    if(neg_count > 0){
+#      message(paste("Removed", neg_count, "negative values in", variable))
+#      data$.y[data$.y < 0] <- NA
+#    }
+#  }
 
 
   if(any(is.na(data$.y))){
@@ -63,7 +62,7 @@ MonoExpModel <- function(data, variable, direction,
   amp      <- plateau - baseline
   if(!is.finite(amp) || amp == 0) amp <- diff(range(data$.y, na.rm = TRUE))
 
-  # Time delay guess: first time the signal has moved 5% toward its plateau.
+  
   thr     <- baseline + 0.05 * amp
   crossed <- if(amp >= 0) which(data$.y > thr) else which(data$.y < thr)
   TD_base <- if(length(crossed) > 0) data$Time[min(crossed)] else 0.05 * Tmax
@@ -71,9 +70,7 @@ MonoExpModel <- function(data, variable, direction,
   tau_span <- Tmax - TD_base
   if(!is.finite(tau_span) || tau_span <= 0) tau_span <- Tmax
 
-  # One B / tau / TD per component. tau and TD are staggered across components
-  # so a multi-phase response splits into distinct phases instead of collapsing
-  # into identical overlapping curves.
+
   Start_vals <- list()
   for(i in seq_len(n_comp)){
     Start_vals[[paste0("B",   i)]] <- amp / n_comp
@@ -87,7 +84,7 @@ MonoExpModel <- function(data, variable, direction,
   }, character(1))
   model_formula <- as.formula(paste(".y ~", paste(terms, collapse = " + ")))
 
-  # tau must be positive; TD is kept within the recorded time window.
+  # tau must be positive, TD is kept within the recorded time window.
   # B is forced non-negative for a rise, but left free for a decay so the
   # amplitude can go negative.
   lower_vec <- setNames(numeric(length(Start_vals)),  names(Start_vals))
