@@ -1,8 +1,7 @@
 # monoexp_model_HCRL.R
 # NOTE: this side of the script is doing the modeling itself. 
 #If any lab members want changes to the calculations, they must be done here
-
-#Fit a mono exponential model to a time series
+# If issues arise or if you have trouble using the app, email Alexander Buelow --> alexbuelow3@gmail.com
 
 #' @param data      
 #' @param variable  
@@ -48,13 +47,11 @@ MonoExpModel <- function(data, variable, direction,
     data$.y <- signal::filtfilt(bw, data$.y)
   }
 
-  # These are just first guesses to launch the optimizer. They are computed
-  # from the shape of the data so both rises and decays start sensibly.
+  # "First guesses" to are start up the optimizer.
   Tmax <- max(data$Time, na.rm = TRUE)
 
-  # Average the first/last chunk of points to estimate where the signal starts
-  # (baseline) and ends (plateau). `amp` is SIGNED: positive for a rise,
-  # negative for a decay. This is what makes decay fits converge normally.
+
+  # negative for a decay. 
   n_pts    <- length(data$.y)
   k        <- max(3, floor(0.10 * n_pts))
   baseline <- mean(head(data$.y, k), na.rm = TRUE)
@@ -84,8 +81,8 @@ MonoExpModel <- function(data, variable, direction,
   }, character(1))
   model_formula <- as.formula(paste(".y ~", paste(terms, collapse = " + ")))
 
-  # tau must be positive, TD is kept within the recorded time window.
-  # B is forced non-negative for a rise, but left free for a decay so the
+  # tau must be positive, 
+  # B is forced non-negative for a rise
   # amplitude can go negative.
   lower_vec <- setNames(numeric(length(Start_vals)),  names(Start_vals))
   upper_vec <- setNames(rep(Inf, length(Start_vals)), names(Start_vals))
